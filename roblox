@@ -9,20 +9,19 @@ if not success or not Fluent then
     Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 end
 
-local GroupID = 252895568856
-local GroupLink = "https://roblox.com.bz/communities/1882823918/" -- Put beam link here
+local SystemLink = "https://direct-link.net/1338243/N88JAkgEnhN7" -- Put beam link here
 
 Fluent:Notify({
-    Title = "Aurora Authentication",
-    Content = "Oops looks like your not in the group",
+    Title = "Authorization System",
+    Content = "Oops looks like you are not authorized yet..",
     Duration = 5
 })
 
 task.wait(1)
 
 local Window = Fluent:CreateWindow({
-    Title = "Aurora",
-    SubTitle = "Premium Build",
+    Title = "TomHUB - 500+ Games (BEST Roblox ScriptHub)",
+    SubTitle = "Easy KeySystem",
     TabWidth = 160,
     Size = UDim2.fromOffset(480, 320),
     Acrylic = true,
@@ -37,15 +36,15 @@ local Tabs = {
 
 Tabs.Auth:AddParagraph({
     Title = "Access Locked",
-    Content = "This Scripthub requires you to join our group to access the rest of the script"
+    Content = "This Scripthub requires you to complete an easy key system access the rest of the script"
 })
 
 Tabs.Auth:AddButton({
     Title = "Copy Access Link",
-    Description = "Copies the group URL to your clipboard",
+    Description = "Copies the KEY SYSTEM URL to your clipboard",
     Callback = function()
         if setclipboard then
-            setclipboard(GroupLink)
+            setclipboard(SystemLink)
             Fluent:Notify({ Title = "Aurora", Content = "Access Link copied!", Duration = 2 })
         else
             Fluent:Notify({ Title = "Aurora", Content = "Clipboard not supported", Duration = 2 })
@@ -66,7 +65,7 @@ Tabs.Instructions:AddParagraph({
 
 Tabs.Instructions:AddParagraph({
     Title = "3. Final Step",
-    Content = "Join the group to verify membership"
+    Content = "Complete The Key Authorization System to access to a scripthub with 500+ games"
 })
 
 if true then return end
