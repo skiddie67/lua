@@ -1,71 +1,1133 @@
-local Fluent
-local success, err = pcall(function()
-    Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-end)
 
-if not success or not Fluent then
-    warn("Aurora: Failed to load UI library. Retrying...")
-    task.wait(1)
-    Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-end
+local Players            = game:GetService("Players")
+local TweenService       = game:GetService("TweenService")
+local UserInputService   = game:GetService("UserInputService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local HttpService        = game:GetService("HttpService")
+local CoreGui            = game:GetService("CoreGui")
 
-local SystemLink = "https://direct-link.net/1338243/N88JAkgEnhN7" -- Put beam link here
-
-Fluent:Notify({
-    Title = "Authorization System",
-    Content = "Oops looks like you are not authorized yet..",
-    Duration = 5
-})
-
-task.wait(1)
-
-local Window = Fluent:CreateWindow({
-    Title = "TomHUB - 500+ Games (BEST Roblox ScriptHub)",
-    SubTitle = "Easy KeySystem",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(480, 320),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
-})
-
-local Tabs = {
-    Auth = Window:AddTab({ Title = "Authentication", Icon = "shield-check" }),
-    Instructions = Window:AddTab({ Title = "Instructions", Icon = "info" })
+--// ── Config ──────────────────────────────────────────────────
+local CONFIG = {
+	KeyLink       = "https://direct-link.net/1338243/N88JAkgEnhN7",
+	Version       = "v3.0",
+	MM2PlaceId    = 142823291,
+	MM2UniverseId = 142823291,
 }
 
-Tabs.Auth:AddParagraph({
-    Title = "Access Locked",
-    Content = "This Scripthub requires you to complete an easy key system access the rest of the script"
+--// ── Palette ─────────────────────────────────────────────────
+local ACCENT = Color3.fromRGB(235, 199, 246)
+local BG     = Color3.fromRGB(20, 16, 20)
+local PANEL  = Color3.fromRGB(28, 22, 28)
+local DEEP   = Color3.fromRGB(24, 19, 24)
+local STROKE = Color3.fromRGB(40, 32, 41)
+local TEXT   = Color3.fromRGB(233, 229, 234)
+local MUTED  = Color3.fromRGB(125, 115, 126)
+local OK_C   = Color3.fromRGB(140, 220, 150)
+local ERR_C  = Color3.fromRGB(240, 110, 110)
+local WARN_C = Color3.fromRGB(240, 176, 108)
+
+local FONT   = Font.new("rbxassetid://12187365364", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+local SPRITE = "rbxassetid://122605056588923"
+local GLOW   = "rbxassetid://8992230677"
+local SHADOW = "rbxassetid://6014261993"
+
+--// ── Helpers ─────────────────────────────────────────────────
+local function create(class, props, children)
+	local inst = Instance.new(class)
+	local parent
+	for k, v in pairs(props or {}) do
+		if k == "Parent" then parent = v else inst[k] = v end
+	end
+	for _, c in ipairs(children or {}) do c.Parent = inst end
+	inst.Parent = parent
+	return inst
+end
+
+local function tween(obj, time, props, style, dir)
+	local t = TweenService:Create(
+		obj,
+		TweenInfo.new(time, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out),
+		props
+	)
+	t:Play()
+	return t
+end
+
+local function label(props)
+	props.BackgroundTransparency = 1
+	props.BorderSizePixel = 0
+	props.FontFace = FONT
+	props.TextColor3 = props.TextColor3 or TEXT
+	props.TextXAlignment = props.TextXAlignment or Enum.TextXAlignment.Left
+	props.TextYAlignment = props.TextYAlignment or Enum.TextYAlignment.Center
+	return create("TextLabel", props)
+end
+
+local function sprite(parent, offset, color, size, position)
+	return create("ImageLabel", {
+		Size = size or UDim2.new(1, 0, 1, 0),
+		Position = position or UDim2.new(0, 0, 0, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Image = SPRITE,
+		ImageRectOffset = offset,
+		ImageRectSize = Vector2.new(24, 24),
+		ImageColor3 = color,
+		ScaleType = Enum.ScaleType.Stretch,
+		Parent = parent,
+	})
+end
+
+local function bindHover(btn, enterProps, leaveProps)
+	btn.MouseEnter:Connect(function() tween(btn, 0.15, enterProps) end)
+	btn.MouseLeave:Connect(function() tween(btn, 0.15, leaveProps) end)
+end
+
+local function copyText(str)
+	if setclipboard then
+		local ok = pcall(setclipboard, str)
+		if ok then return true end
+	end
+	if toclipboard then
+		local ok = pcall(toclipboard, str)
+		if ok then return true end
+	end
+	if syn and syn.write_clipboard then
+		local ok = pcall(syn.write_clipboard, str)
+		if ok then return true end
+	end
+	return false
+end
+
+--// ── Roblox asset fetch helpers ──────────────────────────────
+local function httpGet(url)
+	local ok, body = pcall(function() return game:HttpGet(url, true) end)
+	if ok and type(body) == "string" and body ~= "" then return body end
+	return nil
+end
+
+local function getUniverseIdFromPlace(placeId)
+	local body = httpGet("https://apis.roblox.com/universes/v1/places/" .. tostring(placeId) .. "/universe")
+	if body then
+		local ok, data = pcall(HttpService.JSONDecode, HttpService, body)
+		if ok and data and (data.universeId or data.UniverseId) then
+			return tonumber(data.universeId or data.UniverseId)
+		end
+	end
+
+	local body2 = httpGet("https://api.roblox.com/universes/get-universe-from-place?placeId=" .. tostring(placeId))
+	if body2 then
+		local ok2, data2 = pcall(HttpService.JSONDecode, HttpService, body2)
+		if ok2 and data2 and data2.UniverseId then
+			return tonumber(data2.UniverseId)
+		end
+	end
+
+	return nil
+end
+
+local function getGameIconViaThumbnailsApi(universeId)
+	local body = httpGet(
+		"https://thumbnails.roblox.com/v1/games/icons?universeIds="
+		.. tostring(universeId)
+		.. "&size=150x150&format=Png&isCircular=false"
+	)
+	if not body then return nil end
+	local ok, data = pcall(HttpService.JSONDecode, HttpService, body)
+	if not ok or not data or not data.data or not data.data[1] then return nil end
+	local url = data.data[1].imageUrl
+	if type(url) ~= "string" then return nil end
+	local id = url:match("/(%d+)/") or url:match("id=(%d+)")
+	if id then return tonumber(id) end
+	return nil
+end
+
+local function buildGameIconCandidates(placeId, universeId)
+	local list = {}
+
+	if universeId then
+		table.insert(list, "rbxthumb://type=GameIcon&id=" .. tostring(universeId) .. "&w=150&h=150")
+	end
+
+	table.insert(list, "rbxthumb://type=GameIcon&id=" .. tostring(placeId) .. "&w=150&h=150")
+
+	if universeId then
+		local id = getGameIconViaThumbnailsApi(universeId)
+		if id then
+			table.insert(list, "rbxassetid://" .. tostring(id))
+		end
+	end
+
+	return list
+end
+
+local function applyGameIcon(imageLabel, placeId, universeId)
+	local candidates = buildGameIconCandidates(placeId, universeId)
+
+	task.spawn(function()
+		for _, candidate in ipairs(candidates) do
+			imageLabel.Image = candidate
+			for _ = 1, 40 do
+				if imageLabel.IsLoaded then return end
+				task.wait(0.05)
+			end
+		end
+
+		imageLabel.Image = GLOW
+		imageLabel.ImageColor3 = ACCENT
+		imageLabel.ImageTransparency = 0.2
+		imageLabel.ScaleType = Enum.ScaleType.Stretch
+	end)
+end
+
+--// ── Root ────────────────────────────────────────────────────
+local gui = create("ScreenGui", {
+	Name = "airflowkey",
+	ResetOnSpawn = false,
+	DisplayOrder = 999,
+	IgnoreGuiInset = true,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 })
 
-Tabs.Auth:AddButton({
-    Title = "Copy Access Link",
-    Description = "Copies the KEY SYSTEM URL to your clipboard",
-    Callback = function()
-        if setclipboard then
-            setclipboard(SystemLink)
-            Fluent:Notify({ Title = "Aurora", Content = "Access Link copied!", Duration = 2 })
-        else
-            Fluent:Notify({ Title = "Aurora", Content = "Clipboard not supported", Duration = 2 })
-        end
-    end
+--// ── Window ──────────────────────────────────────────────────
+local main = create("Frame", {
+	Name = "Main",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	Size = UDim2.new(0, 600, 0, 400),
+	BackgroundTransparency = 1,
+	Parent = gui,
+})
+local mainScale = create("UIScale", { Scale = 1, Parent = main })
+local savedPos = main.Position
+
+create("ImageLabel", {
+	Name = "Shadow",
+	Size = UDim2.new(1, 50, 1, 50),
+	Position = UDim2.new(0, -25, 0, -25),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Image = SHADOW,
+	ImageColor3 = Color3.new(0, 0, 0),
+	ImageTransparency = 0.55,
+	ScaleType = Enum.ScaleType.Slice,
+	SliceCenter = Rect.new(49, 49, 450, 450),
+	Parent = main,
 })
 
--- Numbered Instructions
-Tabs.Instructions:AddParagraph({
-    Title = "1. Open Browser",
-    Content = "Open your preferred web browser on your device - e.g : Chrome"
+local canvas = create("CanvasGroup", {
+	Name = "Canvas",
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundColor3 = BG,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	Parent = main,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = canvas })
+
+local function blob(size, pos, rotation, transparency)
+	local img = create("ImageLabel", {
+		Size = size,
+		Position = pos,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Image = GLOW,
+		ImageColor3 = Color3.fromRGB(226, 218, 230),
+		ImageTransparency = transparency,
+		ScaleType = Enum.ScaleType.Stretch,
+		Parent = canvas,
+	})
+	create("UIGradient", {
+		Rotation = rotation,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+			ColorSequenceKeypoint.new(1, ACCENT),
+		}),
+		Parent = img,
+	})
+	return img
+end
+
+blob(UDim2.new(0, 520, 0, 240), UDim2.new(0, 586, 0, 10), 90, 0.92)
+blob(UDim2.new(0, 90, 0, 180), UDim2.new(0, 6, 0, -6), 90, 0.78)
+blob(UDim2.new(0, 130, 0, 60), UDim2.new(0, -10, 0, 390), 90, 0.75)
+blob(UDim2.new(0, 500, 0, 180), UDim2.new(0, 300, 0, 408), 270, 0.86)
+
+--// ── Left panel ──────────────────────────────────────────────
+local left = create("Frame", {
+	Name = "Left",
+	Size = UDim2.new(0, 356, 1, 0),
+	BackgroundTransparency = 1,
+	ZIndex = 2,
+	Parent = canvas,
 })
 
-Tabs.Instructions:AddParagraph({
-    Title = "2. Paste Link",
-    Content = "Paste the link you copied from the GUI into the URL bar"
+create("ImageLabel", {
+	Size = UDim2.new(0, 44, 0, 40),
+	Position = UDim2.new(0, 28, 0, 26),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Image = "rbxassetid://103859712365480",
+	ImageColor3 = ACCENT,
+	ScaleType = Enum.ScaleType.Fit,
+	Parent = left,
 })
 
-Tabs.Instructions:AddParagraph({
-    Title = "3. Final Step",
-    Content = "Complete The Key Authorization System to access to a scripthub with 500+ games"
+label({
+	Size = UDim2.new(0, 200, 0, 24),
+	Position = UDim2.new(0, 82, 0, 28),
+	Text = "Airflow",
+	TextSize = 22,
+	Parent = left,
 })
 
-if true then return end
+label({
+	Size = UDim2.new(0, 200, 0, 14),
+	Position = UDim2.new(0, 82, 0, 52),
+	Text = "Key system · " .. CONFIG.Version,
+	TextSize = 12,
+	TextColor3 = MUTED,
+	Parent = left,
+})
+
+label({
+	Size = UDim2.new(0, 200, 0, 14),
+	Position = UDim2.new(0, 28, 0, 100),
+	Text = "License key",
+	TextSize = 11,
+	TextColor3 = MUTED,
+	Parent = left,
+})
+
+local inputFrame = create("Frame", {
+	Name = "Input",
+	Size = UDim2.new(0, 300, 0, 40),
+	Position = UDim2.new(0, 28, 0, 120),
+	BackgroundColor3 = DEEP,
+	BorderSizePixel = 0,
+	Parent = left,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = inputFrame })
+local inputStroke = create("UIStroke", {
+	Color = STROKE,
+	Thickness = 1,
+	ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+	LineJoinMode = Enum.LineJoinMode.Round,
+	Parent = inputFrame,
+})
+
+local inputIcon = create("Frame", {
+	Size = UDim2.new(0, 16, 0, 16),
+	Position = UDim2.new(0, 13, 0, 12),
+	BackgroundTransparency = 1,
+	Parent = inputFrame,
+})
+create("ImageLabel", {
+	Size = UDim2.new(2, 0, 2, 0),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Image = GLOW,
+	ImageColor3 = MUTED,
+	ImageTransparency = 0.9,
+	ScaleType = Enum.ScaleType.Stretch,
+	Parent = inputIcon,
+})
+sprite(inputIcon, Vector2.new(975, 50), MUTED)
+
+local textBox = create("TextBox", {
+	Name = "KeyInput",
+	Size = UDim2.new(1, -52, 1, 0),
+	Position = UDim2.new(0, 40, 0, 0),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Text = "",
+	PlaceholderText = "Paste your key here",
+	PlaceholderColor3 = MUTED,
+	ClearTextOnFocus = false,
+	MultiLine = false,
+	TextSize = 13,
+	TextColor3 = TEXT,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Center,
+	FontFace = FONT,
+	Parent = inputFrame,
+})
+
+local submitBtn = create("TextButton", {
+	Name = "Submit",
+	Size = UDim2.new(0, 144, 0, 38),
+	Position = UDim2.new(0, 28, 0, 176),
+	BackgroundColor3 = ACCENT,
+	BackgroundTransparency = 0.12,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Text = "",
+	Parent = left,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = submitBtn })
+create("UIStroke", {
+	Color = ACCENT,
+	Transparency = 0.4,
+	Thickness = 1,
+	ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+	LineJoinMode = Enum.LineJoinMode.Round,
+	Parent = submitBtn,
+})
+label({
+	Size = UDim2.new(1, 0, 1, 0),
+	Text = "Submit",
+	TextSize = 13,
+	TextColor3 = Color3.fromRGB(24, 18, 26),
+	TextXAlignment = Enum.TextXAlignment.Center,
+	Parent = submitBtn,
+})
+local submitIcon = create("Frame", {
+	Size = UDim2.new(0, 16, 0, 16),
+	Position = UDim2.new(0, 14, 0, 11),
+	BackgroundTransparency = 1,
+	Parent = submitBtn,
+})
+sprite(submitIcon, Vector2.new(200, 100), Color3.fromRGB(24, 18, 26))
+
+local getKeyBtn = create("TextButton", {
+	Name = "GetKey",
+	Size = UDim2.new(0, 144, 0, 38),
+	Position = UDim2.new(0, 184, 0, 176),
+	BackgroundColor3 = Color3.fromRGB(42, 36, 43),
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Text = "",
+	Parent = left,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = getKeyBtn })
+create("UIStroke", {
+	Color = STROKE,
+	Thickness = 1,
+	ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+	LineJoinMode = Enum.LineJoinMode.Round,
+	Parent = getKeyBtn,
+})
+label({
+	Size = UDim2.new(1, 0, 1, 0),
+	Text = "Get a key",
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Center,
+	Parent = getKeyBtn,
+})
+local getIcon = create("Frame", {
+	Size = UDim2.new(0, 16, 0, 16),
+	Position = UDim2.new(0, 14, 0, 11),
+	BackgroundTransparency = 1,
+	Parent = getKeyBtn,
+})
+sprite(getIcon, Vector2.new(450, 500), TEXT)
+
+local feedback = label({
+	Size = UDim2.new(0, 300, 0, 16),
+	Position = UDim2.new(0, 28, 0, 232),
+	Text = "",
+	TextSize = 12,
+	TextColor3 = MUTED,
+	Parent = left,
+})
+
+label({
+	Size = UDim2.new(0, 300, 0, 14),
+	Position = UDim2.new(0, 28, 0, 296),
+	Text = "Your key is saved, you only enter it once",
+	TextSize = 11,
+	TextColor3 = MUTED,
+	Parent = left,
+})
+
+create("Frame", {
+	Size = UDim2.new(0, 300, 0, 1),
+	Position = UDim2.new(0, 28, 0, 336),
+	BackgroundColor3 = STROKE,
+	BorderSizePixel = 0,
+	Parent = left,
+})
+
+local leftDot = create("Frame", {
+	Size = UDim2.new(0, 6, 0, 6),
+	Position = UDim2.new(0, 28, 0, 358),
+	BackgroundColor3 = OK_C,
+	BorderSizePixel = 0,
+	Parent = left,
+})
+create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = leftDot })
+create("ImageLabel", {
+	Size = UDim2.new(4, 0, 4, 0),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Image = GLOW,
+	ImageColor3 = OK_C,
+	ImageTransparency = 0.6,
+	ScaleType = Enum.ScaleType.Stretch,
+	Parent = leftDot,
+})
+
+label({
+	Size = UDim2.new(0, 200, 0, 14),
+	Position = UDim2.new(0, 42, 0, 354),
+	Text = "Systems online · secure",
+	TextSize = 11,
+	TextColor3 = MUTED,
+	Parent = left,
+})
+
+--// ── Divider ─────────────────────────────────────────────────
+create("Frame", {
+	Size = UDim2.new(0, 1, 1, -56),
+	Position = UDim2.new(0, 356, 0, 28),
+	BackgroundColor3 = STROKE,
+	BorderSizePixel = 0,
+	ZIndex = 2,
+	Parent = canvas,
+})
+
+--// ── Right panel ─────────────────────────────────────────────
+local right = create("Frame", {
+	Name = "Right",
+	Size = UDim2.new(0, 244, 1, 0),
+	Position = UDim2.new(0, 357, 0, 0),
+	BackgroundTransparency = 1,
+	ZIndex = 2,
+	Parent = canvas,
+})
+
+label({
+	Size = UDim2.new(0, 150, 0, 14),
+	Position = UDim2.new(0, 28, 0, 30),
+	Text = "DETECTED GAME",
+	TextSize = 10,
+	TextColor3 = MUTED,
+	Parent = right,
+})
+
+local gameCard = create("Frame", {
+	Size = UDim2.new(0, 188, 0, 60),
+	Position = UDim2.new(0, 28, 0, 48),
+	BackgroundColor3 = PANEL,
+	BorderSizePixel = 0,
+	Parent = right,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = gameCard })
+create("UIStroke", { Color = STROKE, Thickness = 1, Parent = gameCard })
+
+local gameLogoFrame = create("Frame", {
+	Size = UDim2.new(0, 38, 0, 38),
+	Position = UDim2.new(0, 11, 0, 11),
+	BackgroundColor3 = DEEP,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	Parent = gameCard,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 7), Parent = gameLogoFrame })
+create("UIStroke", { Color = STROKE, Thickness = 1, Parent = gameLogoFrame })
+
+local gameLogo = create("ImageLabel", {
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Image = "",
+	ScaleType = Enum.ScaleType.Crop,
+	Parent = gameLogoFrame,
+})
+
+local gameName = label({
+	Size = UDim2.new(0, 122, 0, 14),
+	Position = UDim2.new(0, 58, 0, 15),
+	Text = "Detecting...",
+	TextSize = 12,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Parent = gameCard,
+})
+
+local gameId = label({
+	Size = UDim2.new(0, 122, 0, 13),
+	Position = UDim2.new(0, 58, 0, 32),
+	Text = "Please wait",
+	TextSize = 11,
+	TextColor3 = MUTED,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Parent = gameCard,
+})
+
+label({
+	Size = UDim2.new(0, 150, 0, 14),
+	Position = UDim2.new(0, 28, 0, 124),
+	Text = "BEST SUPPORTED",
+	TextSize = 10,
+	TextColor3 = MUTED,
+	Parent = right,
+})
+
+local mm2Card = create("Frame", {
+	Name = "MM2Card",
+	Size = UDim2.new(0, 188, 0, 60),
+	Position = UDim2.new(0, 28, 0, 142),
+	BackgroundColor3 = PANEL,
+	BorderSizePixel = 0,
+	Parent = right,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = mm2Card })
+local mm2Stroke = create("UIStroke", { Color = ACCENT, Thickness = 1, Transparency = 0.35, Parent = mm2Card })
+
+local mm2LogoFrame = create("Frame", {
+	Size = UDim2.new(0, 38, 0, 38),
+	Position = UDim2.new(0, 11, 0, 11),
+	BackgroundColor3 = DEEP,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	Parent = mm2Card,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 7), Parent = mm2LogoFrame })
+create("UIStroke", { Color = ACCENT, Thickness = 1, Transparency = 0.5, Parent = mm2LogoFrame })
+
+local mm2Logo = create("ImageLabel", {
+	Size = UDim2.new(1, 0, 1, 0),
+	Position = UDim2.new(0, 0, 0, 0),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Image = "",
+	ScaleType = Enum.ScaleType.Crop,
+	Parent = mm2LogoFrame,
+})
+
+task.spawn(function()
+	local universeId = getUniverseIdFromPlace(CONFIG.MM2PlaceId) or CONFIG.MM2UniverseId
+	applyGameIcon(mm2Logo, CONFIG.MM2PlaceId, universeId)
+end)
+
+label({
+	Size = UDim2.new(0, 132, 0, 14),
+	Position = UDim2.new(0, 58, 0, 13),
+	Text = "Murder Mystery 2",
+	TextSize = 12,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Parent = mm2Card,
+})
+
+label({
+	Size = UDim2.new(0, 132, 0, 13),
+	Position = UDim2.new(0, 58, 0, 30),
+	Text = "Best script · Most features",
+	TextSize = 10,
+	TextColor3 = ACCENT,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Parent = mm2Card,
+})
+
+local badge = create("Frame", {
+	Size = UDim2.new(0, 44, 0, 14),
+	Position = UDim2.new(1, -50, 0, 40),
+	BackgroundColor3 = ACCENT,
+	BackgroundTransparency = 0.85,
+	BorderSizePixel = 0,
+	Parent = mm2Card,
+})
+create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = badge })
+create("UIStroke", { Color = ACCENT, Thickness = 1, Transparency = 0.4, Parent = badge })
+label({
+	Size = UDim2.new(1, 0, 1, 0),
+	Text = "★ TOP",
+	TextSize = 9,
+	TextColor3 = ACCENT,
+	TextXAlignment = Enum.TextXAlignment.Center,
+	Parent = badge,
+})
+
+label({
+	Size = UDim2.new(0, 150, 0, 14),
+	Position = UDim2.new(0, 28, 0, 218),
+	Text = "FEATURES",
+	TextSize = 10,
+	TextColor3 = MUTED,
+	Parent = right,
+})
+
+local function featureItem(y, text)
+	local dot = create("Frame", {
+		Size = UDim2.new(0, 5, 0, 5),
+		Position = UDim2.new(0, 30, 0, y + 5),
+		BackgroundColor3 = OK_C,
+		BorderSizePixel = 0,
+		Parent = right,
+	})
+	create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = dot })
+	create("ImageLabel", {
+		Size = UDim2.new(4, 0, 4, 0),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Image = GLOW,
+		ImageColor3 = OK_C,
+		ImageTransparency = 0.7,
+		ScaleType = Enum.ScaleType.Stretch,
+		Parent = dot,
+	})
+	return label({
+		Size = UDim2.new(0, 190, 0, 14),
+		Position = UDim2.new(0, 44, 0, y),
+		Text = text,
+		TextSize = 11,
+		Parent = right,
+	})
+end
+
+featureItem(238, "Silent Aim + Auto Shoot")
+featureItem(255, "Player ESP & Wallhack")
+featureItem(272, "Auto Win / Role Reveal")
+featureItem(289, "Gun Mods & No Recoil")
+featureItem(306, "Full Config System")
+
+label({
+	Size = UDim2.new(0, 188, 0, 14),
+	Position = UDim2.new(0, 28, 0, 336),
+	Text = "More features added regularly",
+	TextSize = 10,
+	TextColor3 = MUTED,
+	TextXAlignment = Enum.TextXAlignment.Center,
+	Parent = right,
+})
+
+task.spawn(function()
+	while mm2Card.Parent do
+		tween(mm2Stroke, 1.6, { Transparency = 0.7 })
+		task.wait(1.6)
+		tween(mm2Stroke, 1.6, { Transparency = 0.25 })
+		task.wait(1.6)
+	end
+end)
+
+--// ── Title bar (drag) + close ────────────────────────────────
+local titleBar = create("Frame", {
+	Name = "TitleBar",
+	Size = UDim2.new(1, 0, 0, 84),
+	BackgroundTransparency = 1,
+	ZIndex = 5,
+	Parent = canvas,
+})
+
+local closeBtn = create("TextButton", {
+	Name = "Close",
+	Size = UDim2.new(0, 26, 0, 26),
+	Position = UDim2.new(1, -38, 0, 18),
+	BackgroundColor3 = Color3.fromRGB(34, 27, 34),
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Text = "",
+	ZIndex = 10,
+	Parent = canvas,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 7), Parent = closeBtn })
+create("UIStroke", { Color = STROKE, Thickness = 1, Parent = closeBtn })
+local cx1 = create("Frame", {
+	Size = UDim2.new(0, 11, 0, 2),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	BackgroundColor3 = MUTED,
+	BorderSizePixel = 0,
+	Rotation = 45,
+	Parent = closeBtn,
+})
+local cx2 = create("Frame", {
+	Size = UDim2.new(0, 11, 0, 2),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	BackgroundColor3 = MUTED,
+	BorderSizePixel = 0,
+	Rotation = -45,
+	Parent = closeBtn,
+})
+create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = cx1 })
+create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = cx2 })
+
+closeBtn.MouseEnter:Connect(function()
+	tween(cx1, 0.15, { BackgroundColor3 = ERR_C })
+	tween(cx2, 0.15, { BackgroundColor3 = ERR_C })
+	tween(closeBtn, 0.15, { BackgroundColor3 = Color3.fromRGB(48, 32, 36) })
+end)
+closeBtn.MouseLeave:Connect(function()
+	tween(cx1, 0.15, { BackgroundColor3 = MUTED })
+	tween(cx2, 0.15, { BackgroundColor3 = MUTED })
+	tween(closeBtn, 0.15, { BackgroundColor3 = Color3.fromRGB(34, 27, 34) })
+end)
+
+--// ── Reopen button ───────────────────────────────────────────
+local reopen = create("TextButton", {
+	Name = "Reopen",
+	Size = UDim2.new(0, 46, 0, 46),
+	Position = UDim2.new(0, 22, 0.5, 0),
+	AnchorPoint = Vector2.new(0, 0.5),
+	BackgroundColor3 = DEEP,
+	BorderSizePixel = 0,
+	AutoButtonColor = false,
+	Text = "",
+	Visible = false,
+	Parent = gui,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = reopen })
+create("UIStroke", { Color = STROKE, Thickness = 1, Parent = reopen })
+create("ImageLabel", {
+	Size = UDim2.new(0, 26, 0, 24),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Image = "rbxassetid://103859712365480",
+	ImageColor3 = ACCENT,
+	ScaleType = Enum.ScaleType.Fit,
+	Parent = reopen,
+})
+local reopenScale = create("UIScale", { Scale = 0, Parent = reopen })
+
+--// ── Notifications ───────────────────────────────────────────
+local notifHolder = create("Frame", {
+	Name = "Notifications",
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundTransparency = 1,
+	ZIndex = 100,
+	Parent = gui,
+})
+
+local activeNotifs = {}
+local SLOT = 72
+
+local function relayoutNotifs()
+	for i, n in ipairs(activeNotifs) do
+		tween(n, 0.35, { Position = UDim2.new(1, -18, 0, 18 + (i - 1) * SLOT) })
+	end
+end
+
+local function dismissNotif(n)
+	local idx = table.find(activeNotifs, n)
+	if not idx then return end
+	table.remove(activeNotifs, idx)
+	tween(n, 0.28, {
+		GroupTransparency = 1,
+		Position = UDim2.new(1, 340, 0, n.Position.Y.Offset),
+	}, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	task.delay(0.3, function()
+		if n then n:Destroy() end
+	end)
+	relayoutNotifs()
+end
+
+local function notify(title, message, accent)
+	accent = accent or ACCENT
+
+	local n = create("CanvasGroup", {
+		Size = UDim2.new(0, 300, 0, 64),
+		Position = UDim2.new(1, 340, 0, 18 + #activeNotifs * SLOT),
+		AnchorPoint = Vector2.new(1, 0),
+		BackgroundColor3 = DEEP,
+		BorderSizePixel = 0,
+		GroupTransparency = 1,
+		ZIndex = 101,
+		Parent = notifHolder,
+	})
+	create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = n })
+	create("UIStroke", {
+		Color = STROKE,
+		Thickness = 1,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+		Parent = n,
+	})
+
+	create("Frame", {
+		Size = UDim2.new(0, 3, 1, -24),
+		Position = UDim2.new(0, 0, 0, 12),
+		BackgroundColor3 = accent,
+		BorderSizePixel = 0,
+		Parent = n,
+	}, {
+		create("UICorner", { CornerRadius = UDim.new(1, 0) }),
+	})
+
+	label({
+		Size = UDim2.new(1, -34, 0, 16),
+		Position = UDim2.new(0, 16, 0, 12),
+		Text = title,
+		TextSize = 13,
+		TextColor3 = accent,
+		Parent = n,
+	})
+	label({
+		Size = UDim2.new(1, -34, 0, 30),
+		Position = UDim2.new(0, 16, 0, 29),
+		Text = message,
+		TextSize = 11,
+		TextColor3 = MUTED,
+		TextWrapped = true,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Parent = n,
+	})
+
+	local clickable = create("TextButton", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		Text = "",
+		ZIndex = 102,
+		Parent = n,
+	})
+	clickable.MouseButton1Click:Connect(function() dismissNotif(n) end)
+
+	table.insert(activeNotifs, n)
+	relayoutNotifs()
+	tween(n, 0.32, { GroupTransparency = 0 })
+	task.delay(4.5, function() dismissNotif(n) end)
+	return n
+end
+
+--// ── Shake / flash helpers ───────────────────────────────────
+local function shake(frame, intensity)
+	intensity = intensity or 7
+	local origin = frame.Position
+	local pattern = { 0, -1, 1, -0.75, 0.75, -0.4, 0.4, -0.15, 0.15, 0 }
+	for i, m in ipairs(pattern) do
+		task.delay((i - 1) * 0.032, function()
+			if frame.Parent then
+				frame.Position = origin + UDim2.new(0, m * intensity, 0, 0)
+			end
+		end)
+	end
+	task.delay(#pattern * 0.032 + 0.02, function()
+		if frame.Parent then frame.Position = origin end
+	end)
+end
+
+local function flashStroke(stroke, color)
+	stroke.Color = color
+	tween(stroke, 0.7, { Color = STROKE })
+end
+
+local function setFeedback(text, color)
+	feedback.Text = text
+	feedback.TextColor3 = color or MUTED
+end
+
+--// ── Game detection ──────────────────────────────────────────
+local function detectGame()
+	local placeId = game.PlaceId
+	local name = "Unknown Place"
+	local creator = ""
+
+	local ok, info = pcall(function()
+		return MarketplaceService:GetProductInfo(placeId, Enum.InfoType.Asset)
+	end)
+	if ok and info and info.Name then
+		name = info.Name
+		if info.Creator and info.Creator.Name then
+			creator = info.Creator.Name
+		end
+	else
+		local ok2, n = pcall(function() return game.Name end)
+		if ok2 and n and n ~= "" then name = n end
+	end
+
+	gameName.Text = name
+	if creator ~= "" then
+		gameId.Text = "by " .. creator
+	else
+		gameId.Text = "Place ID: " .. tostring(placeId)
+	end
+
+	task.spawn(function()
+		local universeId = getUniverseIdFromPlace(placeId)
+		applyGameIcon(gameLogo, placeId, universeId)
+	end)
+end
+
+--// ── Open / close ────────────────────────────────────────────
+local isOpen = true
+
+local function openWindow()
+	if isOpen then return end
+	isOpen = true
+
+	reopen.Visible = true
+	reopenScale.Scale = 0
+	tween(reopenScale, 0.35, { Scale = 0 }, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+	task.delay(0.2, function()
+		if not isOpen then reopen.Visible = false end
+	end)
+
+	main.Visible = true
+	main.Position = savedPos + UDim2.new(0, 0, 0, 16)
+	mainScale.Scale = 0.92
+	canvas.GroupTransparency = 1
+
+	tween(mainScale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	tween(canvas, 0.25, { GroupTransparency = 0 })
+	tween(main, 0.4, { Position = savedPos })
+end
+
+local function closeWindow()
+	if not isOpen then return end
+	isOpen = false
+
+	savedPos = main.Position
+
+	tween(mainScale, 0.25, { Scale = 0.92 }, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+	tween(canvas, 0.22, { GroupTransparency = 1 })
+	tween(main, 0.25, { Position = savedPos + UDim2.new(0, 0, 0, 16) })
+
+	task.delay(0.25, function()
+		if isOpen then return end
+		main.Visible = false
+		reopen.Visible = true
+		reopenScale.Scale = 0
+		tween(reopenScale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	end)
+end
+
+closeBtn.MouseButton1Click:Connect(closeWindow)
+reopen.MouseButton1Click:Connect(openWindow)
+
+--// ── Dragging ────────────────────────────────────────────────
+local function makeDraggable(frame, handle)
+	local dragging, dragInput, dragStart, startPos
+
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+					savedPos = frame.Position
+				end
+			end)
+		end
+	end)
+
+	handle.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input == dragInput then
+			local delta = input.Position - dragStart
+			frame.Position = UDim2.new(
+				startPos.X.Scale, startPos.X.Offset + delta.X,
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y
+			)
+		end
+	end)
+end
+
+makeDraggable(main, titleBar)
+
+--// ── Hover animations ────────────────────────────────────────
+bindHover(submitBtn,
+	{ BackgroundTransparency = 0, BackgroundColor3 = ACCENT },
+	{ BackgroundTransparency = 0.12, BackgroundColor3 = ACCENT }
+)
+bindHover(getKeyBtn,
+	{ BackgroundColor3 = Color3.fromRGB(58, 48, 60) },
+	{ BackgroundColor3 = Color3.fromRGB(42, 36, 43) }
+)
+bindHover(mm2Card,
+	{ BackgroundColor3 = Color3.fromRGB(34, 27, 34) },
+	{ BackgroundColor3 = PANEL }
+)
+
+--// ── Copy key link ───────────────────────────────────────────
+getKeyBtn.MouseButton1Click:Connect(function()
+	local ok = copyText(CONFIG.KeyLink)
+	if ok then
+		notify("Copied", "Key link copied to your clipboard.", OK_C)
+		setFeedback("Key link copied", OK_C)
+	else
+		notify("Copy failed", "Clipboard unavailable. Link: " .. CONFIG.KeyLink, ERR_C)
+		setFeedback("Clipboard unavailable", ERR_C)
+	end
+	task.delay(2.5, function()
+		if feedback.Text:find("copied") or feedback.Text:find("Clipboard") then
+			setFeedback("", MUTED)
+		end
+	end)
+end)
+
+--// ── Key submission ──────────────────────────────────────────
+local submitting = false
+
+local function submitKey()
+	if submitting then return end
+
+	local raw = textBox.Text or ""
+	local key = raw:match("^%s*(.-)%s*$")
+
+	if key == "" then
+		notify("Missing key", "Please paste a license key before submitting.", WARN_C)
+		setFeedback("Enter a license key first", WARN_C)
+		shake(inputFrame)
+		flashStroke(inputStroke, WARN_C)
+		return
+	end
+
+	submitting = true
+	setFeedback("Validating key...", MUTED)
+
+	task.delay(0.45, function()
+		notify(
+			"Incorrect key",
+			"\"" .. key:sub(1, 26) .. (key:len() > 26 and "..." or "") .. "\" is not a valid Airflow license key.",
+			ERR_C
+		)
+		setFeedback("That key was rejected", ERR_C)
+		shake(inputFrame, 9)
+		flashStroke(inputStroke, ERR_C)
+		submitting = false
+	end)
+end
+
+submitBtn.MouseButton1Click:Connect(submitKey)
+
+textBox.FocusLost:Connect(function(enterPressed)
+	if enterPressed then
+		submitKey()
+	end
+end)
+
+textBox.Focused:Connect(function()
+	tween(inputStroke, 0.2, { Color = ACCENT })
+end)
+textBox.FocusLost:Connect(function()
+	tween(inputStroke, 0.2, { Color = STROKE })
+end)
+
+--// ── Init ────────────────────────────────────────────────────
+detectGame()
+
+mainScale.Scale = 0.9
+canvas.GroupTransparency = 1
+main.Position = savedPos + UDim2.new(0, 0, 0, 18)
+
+task.spawn(function()
+	task.wait(0.1)
+	tween(mainScale, 0.5, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	tween(canvas, 0.3, { GroupTransparency = 0 })
+	tween(main, 0.5, { Position = savedPos })
+end)
+
+local attached = pcall(function()
+	gui.Parent = (gethui and gethui()) or CoreGui
+end)
+if not attached or not gui.Parent then
+	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+end
